@@ -23,6 +23,7 @@ type TeamMember struct {
 	Task      string
 	Model     string   // Heterogeneous Agents: Optional specific model for this task
 	DependsOn []string // List of member IDs this member depends on
+	Produces  string   // Auto-reviewer: declares artifact type ("code", "data", "document")
 }
 
 func NewTeamTool(manager *SubagentManager) *TeamTool {
@@ -109,6 +110,10 @@ func (t *TeamTool) Parameters() map[string]any {
 							"description": "List of 'id' strings this member depends on. Only applicable for 'dag' strategy.",
 							"items":       map[string]any{"type": "string"},
 						},
+						"produces": map[string]any{
+							"type":        "string",
+							"description": "Declares the type of artifact this member produces. Use 'code' for source code files, 'data' for structured data/JSON/CSV, 'document' for prose documents/reports. When set, the framework automatically appends a QA reviewer step after all workers finish to validate output correctness. Omit if no verification is needed.",
+						},
 					},
 					"required": []string{"role", "task"},
 				},
@@ -121,6 +126,60 @@ func (t *TeamTool) Parameters() map[string]any {
 func (t *TeamTool) SetContext(channel, chatID string) {
 	t.originChannel = channel
 	t.originChatID = chatID
+}
+
+// reviewerTaskTemplates maps a `produces` artifact type to the task prompt
+// that the auto-injected QA reviewer will receive.
+var reviewerTaskTemplates = map[string]string{
+	"code":     "You are a code quality reviewer. Read all code files in the workspace that were just written by your predecessors. Check for: syntax errors, incorrect or missing imports, broken logic, type mismatches, and any issues that would cause compilation or runtime failures. List every issue found with the filename and line number if possible. If everything looks correct, respond with 'REVIEW PASSED'.",
+	"data":     "You are a data validation reviewer. Read all output data files (JSON, CSV, YAML, etc.) in the workspace. Check for: invalid format, missing required fields, schema inconsistencies, and malformed values. List every issue found. If everything is valid, respond with 'REVIEW PASSED'.",
+	"document": "You are a document quality reviewer. Read all output documents in the workspace. Check for: logical inconsistencies, incomplete sections, factual contradictions, and poor structure. List every issue found. If the documents are complete and correct, respond with 'REVIEW PASSED'.",
+}
+
+// maybeRunAutoReviewer inspects TeamMembers for `produces` declarations.
+// If any member produced a verifiable artifact type, it runs an automatic
+// QA reviewer agent after all workers have completed.
+func (t *TeamTool) maybeRunAutoReviewer(
+	ctx context.Context,
+	members []TeamMember,
+	baseConfig ToolLoopConfig,
+	workerSummary string,
+) string {
+	// Collect unique produces types from all members
+	producedTypes := make(map[string]bool)
+	for _, m := range members {
+		if m.Produces != "" {
+			producedTypes[m.Produces] = true
+		}
+	}
+	if len(producedTypes) == 0 {
+		return "" // No verifiable artifacts declared, skip review
+	}
+
+	// Build reviewer task: combine templates for all declared artifact types
+	var taskParts []string
+	for artifactType := range producedTypes {
+		if tmpl, ok := reviewerTaskTemplates[artifactType]; ok {
+			taskParts = append(taskParts, tmpl)
+		}
+	}
+	if len(taskParts) == 0 {
+		return "" // Unknown produces types, skip
+	}
+
+	reviewerTask := strings.Join(taskParts, "\n\n") +
+		"\n\nContext from the workers that produced these artifacts:\n" + workerSummary
+
+	reviewerMessages := []providers.Message{
+		{Role: "user", Content: reviewerTask},
+	}
+
+	reviewerConfig := baseConfig
+	loopResult, err := RunToolLoop(ctx, reviewerConfig, reviewerMessages, t.originChannel, t.originChatID)
+	if err != nil {
+		return fmt.Sprintf("[Auto-Reviewer] Failed to run: %v", err)
+	}
+	return "[Auto-Reviewer Result]\n" + loopResult.Content
 }
 
 func (t *TeamTool) Execute(ctx context.Context, args map[string]any) *ToolResult {
@@ -177,12 +236,16 @@ func (t *TeamTool) Execute(ctx context.Context, args map[string]any) *ToolResult
 			}
 		}
 
+		producesStr, _ := mMap["produces"].(string)
+		producesStr = strings.TrimSpace(producesStr)
+
 		members = append(members, TeamMember{
 			ID:        id,
 			Role:      role,
 			Task:      task,
 			Model:     modelStr,
 			DependsOn: dependsOn,
+			Produces:  producesStr,
 		})
 	}
 
@@ -204,13 +267,29 @@ func (t *TeamTool) Execute(ctx context.Context, args map[string]any) *ToolResult
 
 	switch strategy {
 	case "sequential":
-		return t.executeSequential(teamCtx, baseConfig, members)
+		result := t.executeSequential(teamCtx, baseConfig, members)
+		if reviewNote := t.maybeRunAutoReviewer(teamCtx, members, baseConfig, result.ForLLM); reviewNote != "" {
+			result.ForLLM += "\n\n" + reviewNote
+			result.ForUser += "\n\n" + reviewNote
+		}
+		return result
 	case "dag":
-		return t.executeDAG(teamCtx, baseConfig, members)
+		result := t.executeDAG(teamCtx, baseConfig, members)
+		if reviewNote := t.maybeRunAutoReviewer(teamCtx, members, baseConfig, result.ForLLM); reviewNote != "" {
+			result.ForLLM += "\n\n" + reviewNote
+			result.ForUser += "\n\n" + reviewNote
+		}
+		return result
 	case "evaluator_optimizer":
 		return t.executeEvaluatorOptimizer(teamCtx, baseConfig, members)
 	}
-	return t.executeParallel(teamCtx, baseConfig, members)
+	// parallel
+	result := t.executeParallel(teamCtx, baseConfig, members)
+	if reviewNote := t.maybeRunAutoReviewer(teamCtx, members, baseConfig, result.ForLLM); reviewNote != "" {
+		result.ForLLM += "\n\n" + reviewNote
+		result.ForUser += "\n\n" + reviewNote
+	}
+	return result
 }
 
 // upgradeRegistryForConcurrency takes an existing ToolRegistry, clones it,

@@ -150,8 +150,8 @@ func registerSharedTools(
 			agent.Tools.Register(fetchTool)
 		} else {
 			logger.WarnCF("agent", "Failed to initialize WebFetchTool", map[string]any{"error": err.Error()})
-    }
-    
+		}
+
 		if cfg.Tools.IsToolEnabled("web") {
 			searchTool, err := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 				BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
@@ -271,7 +271,7 @@ func registerSharedTools(
 		subagentManager.SetTools(agent.Tools)
 		if cfg.Tools.IsToolEnabled("spawn") {
 			if cfg.Tools.IsToolEnabled("subagent") {
-				subagentManager := tools.NewSubagentManager(provider, agent.Model, agent.Workspace)
+				subagentManager := tools.NewSubagentManager(provider, agent.Model, agent.Candidates, agent.Workspace, msgBus)
 				subagentManager.SetLLMOptions(agent.MaxTokens, agent.Temperature)
 				spawnTool := tools.NewSpawnTool(subagentManager)
 				currentAgentID := agentID

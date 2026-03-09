@@ -671,23 +671,6 @@ type ToolsConfig struct {
 	MediaCleanup    MediaCleanupConfig `json:"media_cleanup"`
 	MCP             MCPConfig          `json:"mcp"`
 	VectorMemory    VectorMemoryConfig `json:"vector_memory"`
-}
-
-// VectorMemoryConfig configures the optional SQLite-backed semantic memory search.
-// When enabled, agent memory retrieval uses embedding-based similarity instead of
-// injecting the entire MEMORY.md into every prompt.
-type VectorMemoryConfig struct {
-	Enabled        bool   `json:"enabled"         env:"PICOCLAW_VECTOR_MEMORY_ENABLED"`
-	APIBase        string `json:"api_base"        env:"PICOCLAW_VECTOR_MEMORY_API_BASE"`
-	APIKey         string `json:"api_key"         env:"PICOCLAW_VECTOR_MEMORY_API_KEY"`
-	EmbeddingModel string `json:"embedding_model" env:"PICOCLAW_VECTOR_MEMORY_EMBEDDING_MODEL"` // e.g. "text-embedding-3-small"
-	TopK           int    `json:"top_k"           env:"PICOCLAW_VECTOR_MEMORY_TOP_K"`           // Number of memories to retrieve per query (default 5)
-}
-
-type SkillsToolsConfig struct {
-	Registries            SkillsRegistriesConfig `json:"registries"`
-	MaxConcurrentSearches int                    `json:"max_concurrent_searches" env:"PICOCLAW_SKILLS_MAX_CONCURRENT_SEARCHES"`
-	SearchCache           SearchCacheConfig      `json:"search_cache"`
 	AppendFile      ToolConfig         `json:"append_file"                                              envPrefix:"PICOCLAW_TOOLS_APPEND_FILE_"`
 	EditFile        ToolConfig         `json:"edit_file"                                                envPrefix:"PICOCLAW_TOOLS_EDIT_FILE_"`
 	FindSkills      ToolConfig         `json:"find_skills"                                              envPrefix:"PICOCLAW_TOOLS_FIND_SKILLS_"`
@@ -702,6 +685,17 @@ type SkillsToolsConfig struct {
 	Subagent        ToolConfig         `json:"subagent"                                                 envPrefix:"PICOCLAW_TOOLS_SUBAGENT_"`
 	WebFetch        ToolConfig         `json:"web_fetch"                                                envPrefix:"PICOCLAW_TOOLS_WEB_FETCH_"`
 	WriteFile       ToolConfig         `json:"write_file"                                               envPrefix:"PICOCLAW_TOOLS_WRITE_FILE_"`
+}
+
+// VectorMemoryConfig configures the optional SQLite-backed semantic memory search.
+// When enabled, agent memory retrieval uses embedding-based similarity instead of
+// injecting the entire MEMORY.md into every prompt.
+type VectorMemoryConfig struct {
+	Enabled        bool   `json:"enabled"         env:"PICOCLAW_VECTOR_MEMORY_ENABLED"`
+	APIBase        string `json:"api_base"        env:"PICOCLAW_VECTOR_MEMORY_API_BASE"`
+	APIKey         string `json:"api_key"         env:"PICOCLAW_VECTOR_MEMORY_API_KEY"`
+	EmbeddingModel string `json:"embedding_model" env:"PICOCLAW_VECTOR_MEMORY_EMBEDDING_MODEL"` // e.g. "text-embedding-3-small"
+	TopK           int    `json:"top_k"           env:"PICOCLAW_VECTOR_MEMORY_TOP_K"`           // Number of memories to retrieve per query (default 5)
 }
 
 type SearchCacheConfig struct {

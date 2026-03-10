@@ -120,38 +120,6 @@ func registerSharedTools(
 			continue
 		}
 
-		// Web tools
-		if searchTool, err := tools.NewWebSearchTool(tools.WebSearchToolOptions{
-			BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
-			BraveMaxResults:      cfg.Tools.Web.Brave.MaxResults,
-			BraveEnabled:         cfg.Tools.Web.Brave.Enabled,
-			TavilyAPIKey:         cfg.Tools.Web.Tavily.APIKey,
-			TavilyBaseURL:        cfg.Tools.Web.Tavily.BaseURL,
-			TavilyMaxResults:     cfg.Tools.Web.Tavily.MaxResults,
-			TavilyEnabled:        cfg.Tools.Web.Tavily.Enabled,
-			DuckDuckGoMaxResults: cfg.Tools.Web.DuckDuckGo.MaxResults,
-			DuckDuckGoEnabled:    cfg.Tools.Web.DuckDuckGo.Enabled,
-			PerplexityAPIKey:     cfg.Tools.Web.Perplexity.APIKey,
-			PerplexityMaxResults: cfg.Tools.Web.Perplexity.MaxResults,
-			PerplexityEnabled:    cfg.Tools.Web.Perplexity.Enabled,
-			GLMSearchAPIKey:      cfg.Tools.Web.GLMSearch.APIKey,
-			GLMSearchBaseURL:     cfg.Tools.Web.GLMSearch.BaseURL,
-			GLMSearchEngine:      cfg.Tools.Web.GLMSearch.SearchEngine,
-			GLMSearchMaxResults:  cfg.Tools.Web.GLMSearch.MaxResults,
-			GLMSearchEnabled:     cfg.Tools.Web.GLMSearch.Enabled,
-			Proxy:                cfg.Tools.Web.Proxy,
-		}); err == nil && searchTool != nil {
-			agent.Tools.Register(searchTool)
-		} else if err != nil {
-			logger.WarnCF("agent", "Failed to initialize WebSearchTool", map[string]any{"error": err.Error()})
-		}
-
-		if fetchTool, err := tools.NewWebFetchToolWithProxy(50000, cfg.Tools.Web.Proxy, 10*1024*1024); err == nil {
-			agent.Tools.Register(fetchTool)
-		} else {
-			logger.WarnCF("agent", "Failed to initialize WebFetchTool", map[string]any{"error": err.Error()})
-		}
-
 		if cfg.Tools.IsToolEnabled("web") {
 			searchTool, err := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 				BraveAPIKeys:         config.MergeAPIKeys(cfg.Tools.Web.Brave.APIKey, cfg.Tools.Web.Brave.APIKeys),

@@ -533,7 +533,7 @@ func TestConcurrentFS_RaceCondition(t *testing.T) {
 
 func TestConcurrencyUpgradeable(t *testing.T) {
 	// Verify that ReadFileTool implements the interface and upgrades correctly
-	readTool := NewReadFileTool("", false)
+	readTool := NewReadFileTool("", false, MaxReadFileSize)
 	upgradable, ok := interface{}(readTool).(ConcurrencyUpgradeable)
 	assert.True(t, ok, "ReadFileTool should implement ConcurrencyUpgradeable")
 

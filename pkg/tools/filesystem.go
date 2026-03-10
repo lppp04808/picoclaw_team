@@ -842,3 +842,10 @@ func (c *ConcurrentFS) ReadDir(path string) ([]os.DirEntry, error) {
 	// Directories rarely suffer from single-file corruption, but we delegate anyway.
 	return c.baseFS.ReadDir(path)
 }
+
+func (c *ConcurrentFS) Open(path string) (fs.File, error) {
+	lock := getPathLock(path)
+	lock.RLock()
+	defer lock.RUnlock()
+	return c.baseFS.Open(path)
+}

@@ -11,7 +11,7 @@ func TestUpgradeRegistryForConcurrency(t *testing.T) {
 	original := NewToolRegistry()
 
 	// Register a mix of tools: some upgradeable, some not
-	readTool := NewReadFileTool("", false)
+	readTool := NewReadFileTool("", false, MaxReadFileSize)
 	listTool := NewListDirTool("", false) // Not upgradeable
 	writeTool := NewWriteFileTool("", false)
 

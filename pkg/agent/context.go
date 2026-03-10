@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
@@ -79,8 +80,10 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 func (cb *ContextBuilder) getIdentity() string {
 	workspacePath, _ := filepath.Abs(filepath.Join(cb.workspace))
 	toolDiscovery := cb.getDiscoveryRule()
+	version := config.FormatVersion()
 
-	return fmt.Sprintf(`# picoclaw 🦞
+	return fmt.Sprintf(
+		`# picoclaw 🦞 (%s)
 
 You are picoclaw, a helpful AI assistant.
 
@@ -102,7 +105,7 @@ Your workspace is at: %s
 
 5. **Team delegation** - For any task that is non-trivial, multi-step, or involves distinct concerns (e.g. "convert React to Vue", "build a feature", "analyze and report"), you MUST use the 'team' tool to delegate and parallelize. Do NOT attempt to handle complex tasks inline by calling tools one by one yourself. Decompose first, delegate second, then report the outcome.
 %s`,
-		workspacePath, workspacePath, workspacePath, workspacePath, workspacePath, toolDiscovery)
+		version, workspacePath, workspacePath, workspacePath, workspacePath, workspacePath, toolDiscovery)
 }
 
 func (cb *ContextBuilder) getDiscoveryRule() string {

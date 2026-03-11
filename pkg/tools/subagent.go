@@ -287,20 +287,6 @@ After completing the task, provide a clear summary of what was done.`
 			Async:   false,
 		}
 	}
-
-	// Send announce message back to main agent
-	if sm.bus != nil {
-		announceContent := fmt.Sprintf("Task '%s' completed.\n\nResult:\n%s", task.Label, task.Result)
-		pubCtx, pubCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer pubCancel()
-		sm.bus.PublishInbound(pubCtx, bus.InboundMessage{
-			Channel:  "system",
-			SenderID: fmt.Sprintf("subagent:%s", task.ID),
-			// Format: "original_channel:original_chat_id" for routing back
-			ChatID:  fmt.Sprintf("%s:%s", task.OriginChannel, task.OriginChatID),
-			Content: announceContent,
-		})
-	}
 }
 
 func (sm *SubagentManager) GetTask(taskID string) (*SubagentTask, bool) {
@@ -350,16 +336,12 @@ func (sm *SubagentManager) BuildBaseWorkerConfig(ctx context.Context) ToolLoopCo
 // Unlike SpawnTool which runs tasks asynchronously, SubagentTool waits for completion
 // and returns the result directly in the ToolResult.
 type SubagentTool struct {
-	manager       *SubagentManager
-	originChannel string
-	originChatID  string
+	manager *SubagentManager
 }
 
 func NewSubagentTool(manager *SubagentManager) *SubagentTool {
 	return &SubagentTool{
-		manager:       manager,
-		originChannel: "cli",
-		originChatID:  "direct",
+		manager: manager,
 	}
 }
 
@@ -386,11 +368,6 @@ func (t *SubagentTool) Parameters() map[string]any {
 		},
 		"required": []string{"task"},
 	}
-}
-
-func (t *SubagentTool) SetContext(channel, chatID string) {
-	t.originChannel = channel
-	t.originChatID = chatID
 }
 
 func (t *SubagentTool) Execute(ctx context.Context, args map[string]any) *ToolResult {
@@ -439,13 +416,24 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]any) *ToolRe
 		}
 	}
 
+	// Fall back to "cli"/"direct" for non-conversation callers (e.g., CLI, tests)
+	// to preserve the same defaults as the original NewSubagentTool constructor.
+	channel := ToolChannel(ctx)
+	if channel == "" {
+		channel = "cli"
+	}
+	chatID := ToolChatID(ctx)
+	if chatID == "" {
+		chatID = "direct"
+	}
+
 	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
 		Provider:      sm.provider,
 		Model:         sm.defaultModel,
 		Tools:         tools,
 		MaxIterations: maxIter,
 		LLMOptions:    llmOptions,
-	}, messages, t.originChannel, t.originChatID)
+	}, messages, channel, chatID)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Subagent execution failed: %v", err)).WithError(err)
 	}

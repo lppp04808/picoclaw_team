@@ -17,7 +17,7 @@ func TestFilesystemTool_ReadFile_Success(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "test.txt")
 	os.WriteFile(testFile, []byte("test content"), 0o644)
 
-	tool := NewReadFileTool("", false)
+	tool := NewReadFileTool("", false, MaxReadFileSize)
 	ctx := context.Background()
 	args := map[string]any{
 		"path": testFile,
@@ -44,7 +44,7 @@ func TestFilesystemTool_ReadFile_Success(t *testing.T) {
 
 // TestFilesystemTool_ReadFile_NotFound verifies error handling for missing file
 func TestFilesystemTool_ReadFile_NotFound(t *testing.T) {
-	tool := NewReadFileTool("", false)
+	tool := NewReadFileTool("", false, MaxReadFileSize)
 	ctx := context.Background()
 	args := map[string]any{
 		"path": "/nonexistent_file_12345.txt",
@@ -58,7 +58,7 @@ func TestFilesystemTool_ReadFile_NotFound(t *testing.T) {
 	}
 
 	// Should contain error message
-	if !strings.Contains(result.ForLLM, "failed to read") && !strings.Contains(result.ForUser, "failed to read") {
+	if !strings.Contains(result.ForLLM, "failed to open file") && !strings.Contains(result.ForUser, "failed to read") {
 		t.Errorf("Expected error message, got ForLLM: %s, ForUser: %s", result.ForLLM, result.ForUser)
 	}
 }
@@ -270,7 +270,7 @@ func TestFilesystemTool_ReadFile_RejectsSymlinkEscape(t *testing.T) {
 		t.Skipf("symlink not supported in this environment: %v", err)
 	}
 
-	tool := NewReadFileTool(workspace, true)
+	tool := NewReadFileTool(workspace, true, MaxReadFileSize)
 	result := tool.Execute(context.Background(), map[string]any{
 		"path": link,
 	})
@@ -288,7 +288,7 @@ func TestFilesystemTool_ReadFile_RejectsSymlinkEscape(t *testing.T) {
 }
 
 func TestFilesystemTool_EmptyWorkspace_AccessDenied(t *testing.T) {
-	tool := NewReadFileTool("", true) // restrict=true but workspace=""
+	tool := NewReadFileTool("", true, MaxReadFileSize) // restrict=true but workspace=""
 
 	// Try to read a sensitive file (simulated by a temp file outside workspace)
 	tmpDir := t.TempDir()
@@ -485,62 +485,4 @@ func TestRootRW_Write(t *testing.T) {
 	content, err = io.ReadAll(f2)
 	assert.NoError(t, err)
 	assert.Equal(t, newData, content)
-}
-
-// TestConcurrentFS_RaceCondition simulates a high-concurrency environment
-// to prove that the ConcurrentFS proxy correctly prevents file corruption.
-func TestConcurrentFS_RaceCondition(t *testing.T) {
-	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "race_test.txt")
-
-	// Pre-fill file with "0"
-	err := os.WriteFile(testFile, []byte("0"), 0o600)
-	assert.NoError(t, err)
-
-	// Create a base FS (hostFs) and wrap it in ConcurrentFS
-	baseFS := &hostFs{}
-	concurrentFs := &ConcurrentFS{baseFS: baseFS}
-
-	numGoroutines := 100
-	done := make(chan bool)
-
-	// Simulate 100 goroutines trying to append/edit simultaneously
-	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			_ = concurrentFs.EditFile(testFile, func(content []byte) ([]byte, error) {
-				// Artificial parsing of a number to increment
-				newContent := append(content, []byte("-x")...)
-				return newContent, nil
-			})
-			done <- true
-		}()
-	}
-
-	// Wait for all to finish
-	for i := 0; i < numGoroutines; i++ {
-		<-done
-	}
-
-	// Verify the file isn't corrupted and has exactly 100 "-x" additions
-	finalData, err := os.ReadFile(testFile)
-	assert.NoError(t, err)
-
-	finalStr := string(finalData)
-	xCount := strings.Count(finalStr, "-x")
-	assert.Equal(t, numGoroutines, xCount, "Race condition detected! The file was corrupted or missed writes.")
-}
-
-func TestConcurrencyUpgradeable(t *testing.T) {
-	// Verify that ReadFileTool implements the interface and upgrades correctly
-	readTool := NewReadFileTool("", false)
-	upgradable, ok := interface{}(readTool).(ConcurrencyUpgradeable)
-	assert.True(t, ok, "ReadFileTool should implement ConcurrencyUpgradeable")
-
-	upgradedTool := upgradable.UpgradeToConcurrent()
-	upgradedReadTool, ok := upgradedTool.(*ReadFileTool)
-	assert.True(t, ok, "Upgraded tool should still be a *ReadFileTool")
-
-	// Ensure the internal fs is now a *ConcurrentFS
-	_, isConcurrent := upgradedReadTool.fs.(*ConcurrentFS)
-	assert.True(t, isConcurrent, "Internal fileSystem should be upgraded to *ConcurrentFS")
 }

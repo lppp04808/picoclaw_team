@@ -153,7 +153,7 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 	}
 
 	// Memory context
-	memoryContext := cb.memory.GetMemoryContext("")
+	memoryContext := cb.memory.GetMemoryContext()
 	if memoryContext != "" {
 		parts = append(parts, "# Memory\n\n"+memoryContext)
 	}

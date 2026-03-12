@@ -56,7 +56,6 @@ func ResolveCandidatesWithLookup(
 
 	addCandidate := func(raw string) {
 		candidateRaw := strings.TrimSpace(raw)
-
 		if lookup != nil {
 			if resolved, ok := lookup(candidateRaw); ok {
 				candidateRaw = resolved

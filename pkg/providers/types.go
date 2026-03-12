@@ -37,14 +37,6 @@ type StatefulProvider interface {
 	Close()
 }
 
-// EmbedProvider is an optional interface for providers that support text embeddings.
-// Not all providers implement this; use a type assertion to check.
-type EmbedProvider interface {
-	// Embed converts text into a float32 vector using the given embedding model.
-	// Returns an error if the provider does not support embeddings or the call fails.
-	Embed(ctx context.Context, text string, model string) ([]float32, error)
-}
-
 // ThinkingCapable is an optional interface for providers that support
 // extended thinking (e.g. Anthropic). Used by the agent loop to warn
 // when thinking_level is configured but the active provider cannot use it.

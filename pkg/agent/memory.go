@@ -20,10 +20,9 @@ import (
 // - Long-term memory: memory/MEMORY.md
 // - Daily notes: memory/YYYYMM/YYYYMMDD.md
 type MemoryStore struct {
-	workspace    string
-	memoryDir    string
-	memoryFile   string
-	lastSyncTime time.Time
+	workspace  string
+	memoryDir  string
+	memoryFile string
 }
 
 // NewMemoryStore creates a new MemoryStore with the given workspace path.
@@ -132,7 +131,7 @@ func (ms *MemoryStore) GetRecentDailyNotes(days int) string {
 
 // GetMemoryContext returns formatted memory context for the agent prompt.
 // It loads the full MEMORY.md.
-func (ms *MemoryStore) GetMemoryContext(query string) string {
+func (ms *MemoryStore) GetMemoryContext() string {
 	longTerm := ms.ReadLongTerm()
 
 	recentNotes := ms.GetRecentDailyNotes(3)

@@ -272,58 +272,6 @@ func responsePreview(body []byte, maxLen int) string {
 	return string(trimmed[:maxLen]) + "..."
 }
 
-// Embed implements providers.EmbedProvider by calling /v1/embeddings.
-// The Provider satisfies EmbedProvider optionally — callers should type-assert.
-func (p *Provider) Embed(ctx context.Context, text string, model string) ([]float32, error) {
-	if p.apiBase == "" {
-		return nil, fmt.Errorf("API base not configured")
-	}
-
-	reqBody, err := json.Marshal(map[string]any{
-		"model": model,
-		"input": text,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal embed request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/embeddings", bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create embed request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("embed request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read embed response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embed API error: status %d: %s", resp.StatusCode, body)
-	}
-
-	var result struct {
-		Data []struct {
-			Embedding []float32 `json:"embedding"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to decode embed response: %w", err)
-	}
-	if len(result.Data) == 0 || len(result.Data[0].Embedding) == 0 {
-		return nil, fmt.Errorf("embed response contained no data")
-	}
-	return result.Data[0].Embedding, nil
-}
-
 func parseResponse(body io.Reader) (*LLMResponse, error) {
 	var apiResponse struct {
 		Choices []struct {
@@ -364,7 +312,6 @@ func parseResponse(body io.Reader) (*LLMResponse, error) {
 
 	choice := apiResponse.Choices[0]
 	toolCalls := make([]ToolCall, 0, len(choice.Message.ToolCalls))
-	truncated := false
 	for _, tc := range choice.Message.ToolCalls {
 		arguments := make(map[string]any)
 		name := ""
@@ -399,19 +346,13 @@ func parseResponse(body io.Reader) (*LLMResponse, error) {
 		toolCalls = append(toolCalls, toolCall)
 	}
 
-	finishReason := choice.FinishReason
-	// Propagate truncation: if finish_reason is "length" or we detected bad JSON, mark as truncated.
-	if truncated || finishReason == "length" {
-		finishReason = "truncated"
-	}
-
 	return &LLMResponse{
 		Content:          choice.Message.Content,
 		ReasoningContent: choice.Message.ReasoningContent,
 		Reasoning:        choice.Message.Reasoning,
 		ReasoningDetails: choice.Message.ReasoningDetails,
 		ToolCalls:        toolCalls,
-		FinishReason:     finishReason,
+		FinishReason:     choice.FinishReason,
 		Usage:            apiResponse.Usage,
 	}, nil
 }

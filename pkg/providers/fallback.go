@@ -16,7 +16,6 @@ type FallbackChain struct {
 type FallbackCandidate struct {
 	Provider string
 	Model    string
-	Tags     []string
 }
 
 // FallbackResult contains the successful response and metadata about all attempts.
@@ -50,19 +49,17 @@ func ResolveCandidates(cfg ModelConfig, defaultProvider string) []FallbackCandid
 func ResolveCandidatesWithLookup(
 	cfg ModelConfig,
 	defaultProvider string,
-	lookup func(raw string) (resolved string, tags []string, ok bool),
+	lookup func(raw string) (resolved string, ok bool),
 ) []FallbackCandidate {
 	seen := make(map[string]bool)
 	var candidates []FallbackCandidate
 
 	addCandidate := func(raw string) {
 		candidateRaw := strings.TrimSpace(raw)
-		var modelTags []string
 
 		if lookup != nil {
-			if resolved, tags, ok := lookup(candidateRaw); ok {
+			if resolved, ok := lookup(candidateRaw); ok {
 				candidateRaw = resolved
-				modelTags = tags
 			}
 		}
 
@@ -78,7 +75,6 @@ func ResolveCandidatesWithLookup(
 		candidates = append(candidates, FallbackCandidate{
 			Provider: ref.Provider,
 			Model:    ref.Model,
-			Tags:     modelTags,
 		})
 	}
 

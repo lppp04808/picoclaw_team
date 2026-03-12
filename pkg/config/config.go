@@ -74,6 +74,22 @@ func (f *FlexibleStringSlice) UnmarshalText(text []byte) error {
 	return nil
 }
 
+type TeamModelConfig struct {
+	Name string   `json:"name" yaml:"name"`
+	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+}
+
+type TeamToolsConfig struct {
+	ToolConfig          `                       envPrefix:"PICOCLAW_TOOLS_TEAM_"`
+	MaxMembers          int               `json:"max_members"         env:"PICOCLAW_TOOLS_TEAM_MAX_MEMBERS"`
+	MaxTeamTokens       int               `json:"max_team_tokens"     env:"PICOCLAW_TOOLS_TEAM_MAX_TOKENS"`
+	MaxEvaluatorLoops   int               `json:"max_evaluator_loops" env:"PICOCLAW_TOOLS_TEAM_MAX_EVALUATOR_LOOPS"`
+	MaxTimeoutMinutes   int               `json:"max_timeout_minutes" env:"PICOCLAW_TOOLS_TEAM_MAX_TIMEOUT_MINUTES"`
+	DisableAutoReviewer bool              `json:"disable_auto_reviewer" env:"PICOCLAW_TOOLS_TEAM_DISABLE_AUTO_REVIEWER"`
+	AllowedStrategies   []string          `json:"allowed_strategies"  env:"PICOCLAW_TOOLS_TEAM_ALLOWED_STRATEGIES"`
+	AllowedModels       []TeamModelConfig `json:"allowed_models"      env:"-"`
+}
+
 type Config struct {
 	Agents    AgentsConfig    `json:"agents"`
 	Bindings  []AgentBinding  `json:"bindings,omitempty"`
@@ -591,7 +607,6 @@ type ModelConfig struct {
 	// Required fields
 	ModelName string   `json:"model_name"`     // User-facing alias for the model
 	Model     string   `json:"model"`          // Protocol/model-identifier (e.g., "openai/gpt-4o", "anthropic/claude-sonnet-4.6")
-	Tags      []string `json:"tags,omitempty"` // Model capability labels like 'vision'
 
 	// HTTP-based providers
 	APIBase string `json:"api_base,omitempty"` // API endpoint URL
@@ -748,6 +763,8 @@ type ToolsConfig struct {
 	Spawn           ToolConfig         `json:"spawn"                                                    envPrefix:"PICOCLAW_TOOLS_SPAWN_"`
 	SPI             ToolConfig         `json:"spi"                                                      envPrefix:"PICOCLAW_TOOLS_SPI_"`
 	Subagent        ToolConfig         `json:"subagent"                                                 envPrefix:"PICOCLAW_TOOLS_SUBAGENT_"`
+	SpawnSubAgent   ToolConfig         `json:"spawn_sub_agent"                                          envPrefix:"PICOCLAW_TOOLS_SPAWN_SUB_AGENT_"`
+	Team            TeamToolsConfig    `json:"team"                                                     envPrefix:"PICOCLAW_TOOLS_TEAM_"`
 	WebFetch        ToolConfig         `json:"web_fetch"                                                envPrefix:"PICOCLAW_TOOLS_WEB_FETCH_"`
 	WriteFile       ToolConfig         `json:"write_file"                                               envPrefix:"PICOCLAW_TOOLS_WRITE_FILE_"`
 }

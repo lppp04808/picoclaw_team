@@ -155,7 +155,7 @@ func NewAgentInstance(
 		Primary:   model,
 		Fallbacks: fallbacks,
 	}
-	resolveFromModelList := func(raw string) (string, []string, bool) {
+	resolveFromModelList := func(raw string) (string, bool) {
 		ensureProtocol := func(model string) string {
 			model = strings.TrimSpace(model)
 			if model == "" {
@@ -169,12 +169,12 @@ func NewAgentInstance(
 
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
-			return "", nil, false
+			return "", false
 		}
 
 		if cfg != nil {
 			if mc, err := cfg.GetModelConfig(raw); err == nil && mc != nil && strings.TrimSpace(mc.Model) != "" {
-				return ensureProtocol(mc.Model), mc.Tags, true
+				return ensureProtocol(mc.Model), true
 			}
 
 			for i := range cfg.ModelList {
@@ -183,16 +183,16 @@ func NewAgentInstance(
 					continue
 				}
 				if fullModel == raw {
-					return ensureProtocol(fullModel), cfg.ModelList[i].Tags, true
+					return ensureProtocol(fullModel), true
 				}
 				_, modelID := providers.ExtractProtocol(fullModel)
 				if modelID == raw {
-					return ensureProtocol(fullModel), cfg.ModelList[i].Tags, true
+					return ensureProtocol(fullModel), true
 				}
 			}
 		}
 
-		return "", nil, false
+		return "", false
 	}
 
 	candidates := providers.ResolveCandidatesWithLookup(modelCfg, defaults.Provider, resolveFromModelList)

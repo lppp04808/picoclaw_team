@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
@@ -54,6 +55,7 @@ type SubagentManager struct {
 	bus            *bus.MessageBus
 	workspace      string
 	tools          *ToolRegistry
+	teamConfig     config.TeamToolsConfig
 	maxIterations  int
 	maxTokens      int
 	temperature    float64
@@ -67,6 +69,7 @@ func NewSubagentManager(
 	defaultModel string,
 	candidates []providers.FallbackCandidate,
 	workspace string,
+	teamConfig config.TeamToolsConfig,
 	bus *bus.MessageBus,
 ) *SubagentManager {
 	return &SubagentManager{
@@ -74,6 +77,7 @@ func NewSubagentManager(
 		provider:      provider,
 		defaultModel:  defaultModel,
 		allowedModels: candidates,
+		teamConfig:    teamConfig,
 		bus:           bus,
 		workspace:     workspace,
 		tools:         NewToolRegistry(),
@@ -89,7 +93,21 @@ func (sm *SubagentManager) IsModelAllowed(model string) bool {
 		return true
 	}
 
-	// Otherwise, check against the resolved candidates (primary + fallbacks + explicitly configured)
+	// 1. Check against explicitly allowed models in team config
+	for _, cand := range sm.teamConfig.AllowedModels {
+		if cand.Name == model {
+			return true
+		}
+	}
+
+	// 2. Otherwise, check against the resolved candidates (primary + fallbacks + explicitly configured)
+	// If teamConfig.AllowedModels is set, we strictly enforce it and DO NOT fall back to candidates
+	// unless the candidate model has tags that overlap with AllowedTags. But since AllowedTags
+	// was not implemented yet, just check fallback for backwards compatibility if teamConfig is empty.
+	if len(sm.teamConfig.AllowedModels) > 0 {
+		return false
+	}
+
 	for _, cand := range sm.allowedModels {
 		if cand.Model == model {
 			return true
@@ -107,23 +125,22 @@ func (sm *SubagentManager) ModelCapabilityHint() string {
 
 	var modelLines []string
 	for _, cand := range sm.allowedModels {
-		if len(cand.Tags) == 0 {
-			modelLines = append(modelLines, fmt.Sprintf("  - %s (general purpose)", cand.Model))
-			continue
-		}
-		var descs []string
-		for _, tag := range cand.Tags {
-			if desc, known := modelTagDescriptions[tag]; known {
-				descs = append(descs, fmt.Sprintf("%s (%s)", tag, desc))
-			} else {
-				descs = append(descs, tag)
-			}
-		}
-		modelLines = append(modelLines, fmt.Sprintf("  - %s [%s]", cand.Model, strings.Join(descs, ", ")))
+		modelLines = append(modelLines, fmt.Sprintf("  - %s (general purpose)", cand.Model))
 	}
 
 	hint := "When selecting a 'model' for sub-agents, use ONLY these configured models:\n"
-	hint += strings.Join(modelLines, "\n")
+	if len(sm.teamConfig.AllowedModels) > 0 {
+		for _, cand := range sm.teamConfig.AllowedModels {
+			tagsStr := ""
+			if len(cand.Tags) > 0 {
+				tagsStr = fmt.Sprintf(" [%s]", strings.Join(cand.Tags, ", "))
+			}
+			hint += fmt.Sprintf("  - %s%s\n", cand.Name, tagsStr)
+		}
+	} else {
+		hint += strings.Join(modelLines, "\n")
+	}
+
 	hint += "\nIf a task requires vision/image analysis, you MUST select a model with the 'vision' tag. If no suitable model is available, omit the 'model' field to use the default."
 	return hint
 }

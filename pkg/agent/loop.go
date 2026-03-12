@@ -220,7 +220,7 @@ func registerSharedTools(
 		}
 
 		// Spawn tool with allowlist checker
-		subagentManager := tools.NewSubagentManager(provider, agent.Model, agent.Candidates, agent.Workspace, msgBus)
+		subagentManager := tools.NewSubagentManager(provider, agent.Model, agent.Candidates, agent.Workspace, cfg.Tools.Team, msgBus)
 		subagentManager.SetLLMOptions(agent.MaxTokens, agent.Temperature)
 		spawnTool := tools.NewSpawnTool(subagentManager)
 		currentAgentID := agentID
@@ -230,10 +230,14 @@ func registerSharedTools(
 		agent.Tools.Register(spawnTool)
 
 		teamTool := tools.NewTeamTool(subagentManager)
-		agent.Tools.Register(teamTool)
+		if cfg.Tools.IsToolEnabled("team") {
+			agent.Tools.Register(teamTool)
+		}
 
 		spawnSubAgentTool := tools.NewSpawnSubAgentTool(subagentManager)
-		agent.Tools.Register(spawnSubAgentTool)
+		if cfg.Tools.IsToolEnabled("spawn_sub_agent") {
+			agent.Tools.Register(spawnSubAgentTool)
+		}
 
 		// Direction 3: Hierarchical Decomposition.
 		// Share the fully-built registry (which includes team, spawn_sub_agent, etc.) back
@@ -242,7 +246,7 @@ func registerSharedTools(
 		subagentManager.SetTools(agent.Tools)
 		if cfg.Tools.IsToolEnabled("spawn") {
 			if cfg.Tools.IsToolEnabled("subagent") {
-				subagentManager := tools.NewSubagentManager(provider, agent.Model, agent.Candidates, agent.Workspace, msgBus)
+				subagentManager := tools.NewSubagentManager(provider, agent.Model, agent.Candidates, agent.Workspace, cfg.Tools.Team, msgBus)
 				subagentManager.SetLLMOptions(agent.MaxTokens, agent.Temperature)
 				spawnTool := tools.NewSpawnTool(subagentManager)
 				currentAgentID := agentID

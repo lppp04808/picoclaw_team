@@ -167,6 +167,16 @@ func (t *TeamTool) maybeRunAutoReviewer(
 		return "" // Unknown produces types, skip
 	}
 
+	// 3. Skip Auto-Reviewer if disabled by config
+	sm := t.manager
+	sm.mu.RLock()
+	disabled := sm.teamConfig.DisableAutoReviewer
+	sm.mu.RUnlock()
+	
+	if disabled {
+		return ""
+	}
+
 	reviewerTask := strings.Join(taskParts, "\n\n") +
 		"\n\nContext from the workers that produced these artifacts:\n" + workerSummary
 
@@ -184,8 +194,37 @@ func (t *TeamTool) maybeRunAutoReviewer(
 
 func (t *TeamTool) Execute(ctx context.Context, args map[string]any) *ToolResult {
 	strategy, ok := args["strategy"].(string)
-	if !ok || (strategy != "sequential" && strategy != "parallel" && strategy != "dag" && strategy != "evaluator_optimizer") {
-		return ErrorResult("strategy must be 'sequential', 'parallel', 'dag', or 'evaluator_optimizer'")
+	if !ok {
+		return ErrorResult("strategy is required")
+	}
+
+	if t.manager == nil {
+		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
+	}
+
+	sm := t.manager
+	sm.mu.RLock()
+	teamConfig := sm.teamConfig
+	sm.mu.RUnlock()
+
+	// 1. Validate Strategy
+	validStrategy := false
+	if len(teamConfig.AllowedStrategies) > 0 {
+		for _, s := range teamConfig.AllowedStrategies {
+			if strategy == s {
+				validStrategy = true
+				break
+			}
+		}
+	} else {
+		// Default allowed strategies if not configured
+		if strategy == "sequential" || strategy == "parallel" || strategy == "dag" || strategy == "evaluator_optimizer" {
+			validStrategy = true
+		}
+	}
+
+	if !validStrategy {
+		return ErrorResult(fmt.Sprintf("strategy '%s' is not allowed by configuration", strategy))
 	}
 
 	membersRaw, ok := args["members"].([]any)
@@ -193,16 +232,37 @@ func (t *TeamTool) Execute(ctx context.Context, args map[string]any) *ToolResult
 		return ErrorResult("members map array is required and must not be empty")
 	}
 
-	maxTokensFloat, ok := args["max_team_tokens"].(float64)
-	var budget *atomic.Int64
-	if ok && maxTokensFloat > 0 {
-		budget = &atomic.Int64{}
-		budget.Store(int64(maxTokensFloat))
+	// 2. Validate Max Members
+	if teamConfig.MaxMembers > 0 && len(membersRaw) > teamConfig.MaxMembers {
+		return ErrorResult(fmt.Sprintf("Team exceeds maximum allowed members (%d). You requested %d members.", teamConfig.MaxMembers, len(membersRaw)))
 	}
 
-	if t.manager == nil {
-		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
+	maxTokensFloat, ok := args["max_team_tokens"].(float64)
+	
+	// Enforce hard budgets from config
+	effectiveMaxTokens := int64(0)
+	if teamConfig.MaxTeamTokens > 0 {
+		effectiveMaxTokens = int64(teamConfig.MaxTeamTokens)
 	}
+	
+	if ok && maxTokensFloat > 0 {
+		requestedTokens := int64(maxTokensFloat)
+		// If LLM requested tokens but config enforces a smaller hard limit, clamp it
+		if effectiveMaxTokens > 0 && requestedTokens > effectiveMaxTokens {
+			effectiveMaxTokens = requestedTokens // LLM asked for more, but we clamp to config
+			// Wait, the clamping logic: if requested > max_team_tokens, clamp effectively shrinks it to max_team_tokens.
+			effectiveMaxTokens = int64(teamConfig.MaxTeamTokens)
+		} else if effectiveMaxTokens == 0 || requestedTokens < effectiveMaxTokens {
+			effectiveMaxTokens = requestedTokens // LLM asked for less budget, let them be conservative
+		}
+	}
+
+	var budget *atomic.Int64
+	if effectiveMaxTokens > 0 {
+		budget = &atomic.Int64{}
+		budget.Store(effectiveMaxTokens)
+	}
+
 
 	var members []TeamMember
 	for i, mRaw := range membersRaw {
@@ -256,8 +316,11 @@ func (t *TeamTool) Execute(ctx context.Context, args map[string]any) *ToolResult
 	}
 
 	// Create a new master context for team bounding
-	// In the future this could be overridden by an argument
-	teamCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	timeoutDur := 15 * time.Minute
+	if teamConfig.MaxTimeoutMinutes > 0 {
+		timeoutDur = time.Duration(teamConfig.MaxTimeoutMinutes) * time.Minute
+	}
+	teamCtx, cancel := context.WithTimeout(ctx, timeoutDur)
 	defer cancel()
 
 	// If strategy is parallel or dag, we must upgrade the file tools to be concurrent-safe (locking)
@@ -460,7 +523,16 @@ func (t *TeamTool) executeEvaluatorOptimizer(ctx context.Context, baseConfig Too
 		{Role: "user", Content: worker.Task},
 	}
 
+	sm := t.manager
+	sm.mu.RLock()
+	teamConfig := sm.teamConfig
+	sm.mu.RUnlock()
+
 	maxLoops := 5
+	if teamConfig.MaxEvaluatorLoops > 0 {
+		maxLoops = teamConfig.MaxEvaluatorLoops
+	}
+	
 	for attempt := 1; attempt <= maxLoops; attempt++ {
 		finalOutput.WriteString(fmt.Sprintf("## Attempt %d\n", attempt))
 
